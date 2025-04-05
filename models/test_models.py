@@ -16,9 +16,17 @@ def query_model(model_name, prompt):
         return f"Error: {response.status_code} - {response.text}" 
 
 if __name__ == "__main__": 
-    models = ["deepseek-coder:1.3b", "mistral", "llama2:13b"] 
-    prompt = "What is the capital of France?" 
+    models = ["deepseek-coder:1.3b", "mistral", "llama2:13b"]\
+    ### general question answering 
+    # capital = "What is the capital of France?"
+    # python = "What are the 3 biggest breakthroughs in python programming in 2025?" 
+    ### Text summarization 
+    # text_sum = "Please summarize this attached text"
+    ### Code Generation 
+    #code_gen = "Generate a for loop in python"
+    ### Creative Writing 
+    writing = "Generate a short story about a grumpy dwarf" 
 
     for model in models: 
         print(f"\n Model: {model}") 
-        print(query_model(model, prompt)) 
+        print(query_model(model, writing)) 
