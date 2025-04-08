@@ -76,6 +76,24 @@ def get_ollama_processes():
                 continue # Process might have terminated or access denied
     return ollama_procs
 
+# Function to get total RSS memory usage of Ollama processes
+def get_ollama_memory_usage():
+    """Calculates the total RSS memory usage (in MB) of all Ollama processes."""
+    total_rss = 0
+    ollama_procs = get_ollama_processes()
+    if not ollama_procs:
+        print("Warning: Ollama process not found during memory measurement.")
+        return "N/A"
+
+    for p in ollama_procs:
+        try:
+            total_rss += p.memory_info().rss
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            print(f"Warning: Could not get memory info for PID {p.pid}")
+            continue
+    # Convert bytes to megabytes
+    return total_rss / (1024 * 1024) if isinstance(total_rss, (int, float)) else "Error"
+
 # Modified query_model to measure CPU usage via cpu_times delta
 def query_model(model_name, prompt):
     """Query the model and measure Ollama's average CPU usage during the request."""
@@ -132,7 +150,6 @@ def query_model(model_name, prompt):
         else:
             print(f"Warning: Ollama process PID {pid} disappeared during request.")
 
-
     if not ollama_procs or found_processes_after == 0:
          # Handle case where no ollama processes were found or measured
          average_cpu_percent = "N/A"
@@ -144,8 +161,12 @@ def query_model(model_name, prompt):
     else:
         average_cpu_percent = 0.0 # Avoid division by zero if elapsed time is negligible
 
+    # Measure memory usage after the request
+    ollama_rss_mb = get_ollama_memory_usage()
+
     result_data = {
         "ollama_avg_cpu_percent": average_cpu_percent, # New key name
+        "ollama_rss_mb": ollama_rss_mb, # Added RAM usage
         "elapsed_time": elapsed_time
     }
 
@@ -194,6 +215,18 @@ if __name__ == "__main__":
         print(f"Time Taken: {result['elapsed_time']:.2f} seconds")
         print("-" * 50)
 
+        # --- Console Output ---
+        # ... (print response and CPU) ...
+        ram_usage_val = result['ollama_rss_mb'] # Get RAM value
+
+        # Print RAM Usage
+        if isinstance(ram_usage_val, (int, float)): # <--- Checks if RAM value is a number
+            print(f"Ollama RAM Usage (RSS): {ram_usage_val:.2f} MB") # <-- Prints formatted number
+        else:
+            print(f"Ollama RAM Usage (RSS): {ram_usage_val}") # <-- Prints non-numeric value (like "N/A" or "Error")
+
+        # ... (print GPU and Time) ...
+
         # Write response and resource usage to Markdown file
         try:
             with open(output_md_file, 'a', encoding='utf-8') as f:
@@ -211,6 +244,7 @@ if __name__ == "__main__":
                 gpu_usage_str = f"{gpu_usage}%" if isinstance(gpu_usage, (int, float)) else str(gpu_usage)
                 f.write(f"- GPU Usage: {gpu_usage_str}\n")
                 f.write(f"- Time Taken: {result['elapsed_time']:.2f} seconds\n")
+                f.write(f"- Ollama RAM Usage (RSS): {result['ollama_rss_mb']:.2f} MB\n")
                 f.write("\n---\n\n")
         except IOError as e:
             print(f"Error writing to file {output_md_file}: {e}")
