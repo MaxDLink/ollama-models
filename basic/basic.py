@@ -1,82 +1,44 @@
 import requests
-import time           # Added for timing
-import psutil        # Added for CPU monitoring
-import pynvml        # Added for GPU monitoring
-import os            # Added for file path operations
+import time
+import psutil
+import pynvml
+import os
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-# Added function to initialize GPU monitoring
+# --- GPU Functions ---
 def initialize_gpu():
     """Initialize GPU monitoring with pynvml."""
     try:
         pynvml.nvmlInit()
         device_count = pynvml.nvmlDeviceGetCount()
         if device_count > 0:
-            return pynvml.nvmlDeviceGetHandleByIndex(0)  # Use first GPU
+            return pynvml.nvmlDeviceGetHandleByIndex(0)
         return None
     except pynvml.NVMLError:
         print("Warning: Could not initialize GPU monitoring (no NVIDIA GPU or driver found).")
         return None
 
-# Added function to read GPU usage
 def get_gpu_usage(handle):
     """Get GPU utilization percentage."""
-    if handle is None:
-        return "N/A"
+    if handle is None: return "N/A"
     try:
         util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-        return util.gpu  # GPU utilization as a percentage
-    except pynvml.NVMLError:
-        return "Error"
+        return util.gpu
+    except pynvml.NVMLError: return "Error"
 
-# Function to find Ollama PIDs and measure their CPU usage
-def get_ollama_cpu_usage(interval=0.1):
-    """Find ollama processes and return their combined CPU usage percentage."""
-    ollama_processes = []
-    for proc in psutil.process_iter(['pid', 'name']):
-        if 'ollama' in proc.info['name'].lower():
-            try:
-                ollama_processes.append(psutil.Process(proc.info['pid']))
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue # Process might have terminated or access denied
-
-    if not ollama_processes:
-        print("Warning: Ollama process not found.")
-        return "N/A"
-
-    total_cpu_percent = 0
-    # Measure CPU usage for each Ollama process
-    for proc in ollama_processes:
-        try:
-            # Use interval to get usage over that period immediately following the request
-            total_cpu_percent += proc.cpu_percent(interval=interval / len(ollama_processes))
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue # Handle cases where process disappears during measurement
-
-    # Cap the total CPU percent at the number of cores * 100
-    # psutil returns total CPU percentage across all cores
-    # Example: 4 cores could theoretically show 400%
-    # total_cpu_percent = min(total_cpu_percent, psutil.cpu_count() * 100)
-    # Note: cpu_percent usually returns a value <= 100 * cpu_count()
-    # No explicit capping needed unless specific behavior desired.
-
-    return total_cpu_percent
-
-# Helper function to get Ollama process objects
+# --- Ollama Process Functions ---
 def get_ollama_processes():
     """Finds and returns a list of psutil.Process objects for Ollama."""
     ollama_procs = []
     for proc in psutil.process_iter(['pid', 'name']):
-        if 'ollama' in proc.info['name'].lower():
+        proc_name = proc.info.get('name')
+        if proc_name and 'ollama' in proc_name.lower():
             try:
-                # Get the full process object
                 ollama_procs.append(psutil.Process(proc.info['pid']))
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue # Process might have terminated or access denied
+            except (psutil.NoSuchProcess, psutil.AccessDenied): continue
     return ollama_procs
 
-# Function to get total RSS memory usage of Ollama processes
 def get_ollama_memory_usage():
     """Calculates the total RSS memory usage (in MB) of all Ollama processes."""
     total_rss = 0
@@ -84,171 +46,157 @@ def get_ollama_memory_usage():
     if not ollama_procs:
         print("Warning: Ollama process not found during memory measurement.")
         return "N/A"
-
     for p in ollama_procs:
         try:
             total_rss += p.memory_info().rss
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             print(f"Warning: Could not get memory info for PID {p.pid}")
             continue
-    # Convert bytes to megabytes
     return total_rss / (1024 * 1024) if isinstance(total_rss, (int, float)) else "Error"
 
-# Modified query_model to measure CPU usage via cpu_times delta
+# --- Core Query Function ---
 def query_model(model_name, prompt):
-    """Query the model and measure Ollama's average CPU usage during the request."""
-    payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "stream": False
-    }
+    """Queries the model and measures performance metrics."""
+    payload = {"model": model_name, "prompt": prompt, "stream": False}
 
-    ollama_procs = get_ollama_processes()
-    if not ollama_procs:
-        print("Warning: Ollama process not found before request.")
-        # Decide how to handle - return error, default values?
-        # For now, proceed but CPU usage will be N/A
-
+    # --- CPU Measurement Setup ---
+    ollama_procs_before = get_ollama_processes()
     initial_cpu_times = {}
-    for p in ollama_procs:
+    if not ollama_procs_before:
+        print("Warning: Ollama process not found before request.")
+    for p in ollama_procs_before:
         try:
             initial_cpu_times[p.pid] = p.cpu_times()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             print(f"Warning: Could not get initial CPU times for PID {p.pid}")
             continue
 
-    # Start timing *after* getting initial times
+    # --- Execute Request and Time ---
     start_time = time.time()
-
-    # Original API call
     response = requests.post(OLLAMA_URL, json=payload)
-
-    # Stop timing *before* getting final times
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    final_cpu_times = {}
-    # Refresh the process list in case PIDs changed (unlikely but possible)
-    # Or just reuse ollama_procs if we assume PIDs are stable for the duration
-    current_ollama_procs = {p.pid: p for p in get_ollama_processes()}
-
+    # --- CPU Measurement Calculation ---
     total_cpu_time_delta = 0.0
-    found_processes_after = 0
-
+    measured_pids_after = 0
+    current_ollama_procs = {p.pid: p for p in get_ollama_processes()}
     for pid, initial_times in initial_cpu_times.items():
         if pid in current_ollama_procs:
             try:
                 final_times = current_ollama_procs[pid].cpu_times()
-                # Calculate delta for this process (user + system time)
                 cpu_delta = (final_times.user - initial_times.user) + \
                             (final_times.system - initial_times.system)
-                total_cpu_time_delta += cpu_delta
-                found_processes_after += 1
+                total_cpu_time_delta += max(0, cpu_delta)
+                measured_pids_after += 1
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 print(f"Warning: Could not get final CPU times for PID {pid}")
                 continue
-        else:
-            print(f"Warning: Ollama process PID {pid} disappeared during request.")
+        else: print(f"Warning: Ollama process PID {pid} disappeared during request.")
 
-    if not ollama_procs or found_processes_after == 0:
-         # Handle case where no ollama processes were found or measured
-         average_cpu_percent = "N/A"
+    if measured_pids_after == 0:
+        average_cpu_percent = "N/A"
+        print("Warning: No Ollama processes could be measured for CPU after the request.")
     elif elapsed_time > 0:
-        # Calculate average CPU percentage during the elapsed time
-        # This percentage is relative to a single core.
-        # A value > 100 means it used more than one core on average.
         average_cpu_percent = (total_cpu_time_delta / elapsed_time) * 100
-    else:
-        average_cpu_percent = 0.0 # Avoid division by zero if elapsed time is negligible
+    else: average_cpu_percent = float('inf') if total_cpu_time_delta > 0 else 0.0
 
-    # Measure memory usage after the request
+    # --- Memory Measurement ---
     ollama_rss_mb = get_ollama_memory_usage()
 
+    # --- Prepare Result ---
     result_data = {
-        "ollama_avg_cpu_percent": average_cpu_percent, # New key name
-        "ollama_rss_mb": ollama_rss_mb, # Added RAM usage
+        "ollama_avg_cpu_percent": average_cpu_percent,
+        "ollama_rss_mb": ollama_rss_mb,
         "elapsed_time": elapsed_time
     }
-
     if response.status_code == 200:
         result_data["response"] = response.json()["response"]
-    else:
-        result_data["response"] = f"Error: {response.status_code} - {response.text}"
+    else: result_data["response"] = f"Error: {response.status_code} - {response.text}"
 
     return result_data
 
+# --- Main Execution Block ---
 if __name__ == "__main__":
     models = ["deepseek-coder:1.3b", "mistral", "llama2:13b"]
-    
-    # Added GPU initialization
-    gpu_handle = initialize_gpu()
-    
-    ### general question answering
-    # capital = "What is the capital of France?"
-    python = "What are the 3 biggest breakthroughs in python programming in 2025?"
+    # --- Define your list of prompts here ---
+    prompts = [
+        "What is the capital of France?",
+        "What are the 3 biggest breakthroughs in python programming in 2025?",
+        "Explain the concept of Object-Oriented Programming (OOP) using a simple analogy.",
+    ]
+    # -----------------------------------------
 
-    # Determine the output file path
+    gpu_handle = initialize_gpu()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_md_file = os.path.join(script_dir, "basic_output.md")
 
-    # Clear the output file at the start of the script run (optional)
-    # with open(output_md_file, 'w', encoding='utf-8') as f:
-    #     f.write("# Model Outputs and Performance\n\n")
+    # Optional: Clear the file at the start
+    try:
+        with open(output_md_file, 'w', encoding='utf-8') as f:
+            f.write("# Model Outputs and Performance\n\n")
+            f.write(f"*Execution started: {time.strftime('%Y-%m-%d %H:%M:%S')}*\n\n")
+    except IOError as e: print(f"Error clearing file {output_md_file}: {e}")
 
+    # --- Loop through models ---
     for model in models:
-        print(f"\nModel: {model}")
-        
-        # Query model with resource tracking
-        result = query_model(model, python)
-        
-        # Get GPU usage
-        gpu_usage = get_gpu_usage(gpu_handle) if gpu_handle else "N/A"
-        
-        # Print response and resource usage (console output)
-        print(f"Response: {result['response']}")
-        # Updated CPU usage reporting
-        if isinstance(result['ollama_avg_cpu_percent'], (int, float)):
-            print(f"Ollama Avg CPU Usage During Request: {result['ollama_avg_cpu_percent']:.2f}%")
-        else:
-            print(f"Ollama Avg CPU Usage During Request: {result['ollama_avg_cpu_percent']}")
-        print(f"GPU Usage: {gpu_usage}%")
-        print(f"Time Taken: {result['elapsed_time']:.2f} seconds")
-        print("-" * 50)
+        print(f"\n===== Testing Model: {model} =====")
 
-        # --- Console Output ---
-        # ... (print response and CPU) ...
-        ram_usage_val = result['ollama_rss_mb'] # Get RAM value
+        # --- Loop through prompts for the current model ---
+        for i, prompt in enumerate(prompts):
+            print(f"\n--- Prompt {i+1}/{len(prompts)} for {model} ---")
+            print(f"Prompt: {prompt}")
 
-        # Print RAM Usage
-        if isinstance(ram_usage_val, (int, float)): # <--- Checks if RAM value is a number
-            print(f"Ollama RAM Usage (RSS): {ram_usage_val:.2f} MB") # <-- Prints formatted number
-        else:
-            print(f"Ollama RAM Usage (RSS): {ram_usage_val}") # <-- Prints non-numeric value (like "N/A" or "Error")
+            # Query the model with the current prompt
+            result = query_model(model, prompt)
+            gpu_usage = get_gpu_usage(gpu_handle) if gpu_handle else "N/A"
 
-        # ... (print GPU and Time) ...
+            # --- Console Output ---
+            print(f"Response: {result['response']}")
+            cpu_usage_val = result['ollama_avg_cpu_percent']
+            ram_usage_val = result['ollama_rss_mb']
 
-        # Write response and resource usage to Markdown file
-        try:
-            with open(output_md_file, 'a', encoding='utf-8') as f:
-                f.write(f"## Model: {model}\n\n")
-                f.write(f"**Prompt:**\n```\n{python}\n```\n\n") # Included the prompt
-                f.write(f"**Response:**\n```\n{result['response']}\n```\n\n")
-                f.write("**Performance:**\n")
-                # Updated CPU usage reporting in file
-                if isinstance(result['ollama_avg_cpu_percent'], (int, float)):
-                    f.write(f"- Ollama Avg CPU Usage During Request: {result['ollama_avg_cpu_percent']:.2f}%\n")
-                else:
-                     f.write(f"- Ollama Avg CPU Usage During Request: {result['ollama_avg_cpu_percent']}\n")
+            if isinstance(cpu_usage_val, (int, float)): print(f"Ollama Avg CPU Usage: {cpu_usage_val:.2f}%")
+            else: print(f"Ollama Avg CPU Usage: {cpu_usage_val}")
 
-                # Handle potential non-numeric GPU usage for formatting
-                gpu_usage_str = f"{gpu_usage}%" if isinstance(gpu_usage, (int, float)) else str(gpu_usage)
-                f.write(f"- GPU Usage: {gpu_usage_str}\n")
-                f.write(f"- Time Taken: {result['elapsed_time']:.2f} seconds\n")
-                f.write(f"- Ollama RAM Usage (RSS): {result['ollama_rss_mb']:.2f} MB\n")
-                f.write("\n---\n\n")
-        except IOError as e:
-            print(f"Error writing to file {output_md_file}: {e}")
-    
-    # Added GPU cleanup
+            if isinstance(ram_usage_val, (int, float)): print(f"Ollama RAM Usage (RSS): {ram_usage_val:.2f} MB")
+            else: print(f"Ollama RAM Usage (RSS): {ram_usage_val}")
+
+            if isinstance(gpu_usage, (int, float)): print(f"GPU Usage: {gpu_usage:.2f}%")
+            else: print(f"GPU Usage: {gpu_usage}")
+
+            print(f"Time Taken: {result['elapsed_time']:.2f} seconds")
+            print("-" * 30) # Short separator for console
+
+            # --- File Output ---
+            try:
+                with open(output_md_file, 'a', encoding='utf-8') as f:
+                    # Write Model and Prompt info for each result
+                    f.write(f"## Model: {model}\n\n")
+                    f.write(f"**Prompt {i+1}/{len(prompts)}:**\n") # Indicate which prompt this is
+                    f.write(f"```\n{prompt}\n```\n\n")
+                    f.write(f"**Response:**\n```\n{result['response']}\n```\n\n")
+                    f.write("**Performance:**\n")
+                    # Write CPU
+                    if isinstance(cpu_usage_val, (int, float)): f.write(f"- Ollama Avg CPU Usage: {cpu_usage_val:.2f}%\n")
+                    else: f.write(f"- Ollama Avg CPU Usage: {cpu_usage_val}\n")
+                    # Write RAM
+                    if isinstance(ram_usage_val, (int, float)): f.write(f"- Ollama RAM Usage (RSS): {ram_usage_val:.2f} MB\n")
+                    else: f.write(f"- Ollama RAM Usage (RSS): {ram_usage_val}\n")
+                    # Write GPU
+                    gpu_usage_str = f"{gpu_usage:.2f}%" if isinstance(gpu_usage, (int, float)) else str(gpu_usage)
+                    f.write(f"- GPU Usage: {gpu_usage_str}\n")
+                    # Write Time
+                    f.write(f"- Time Taken: {result['elapsed_time']:.2f} seconds\n")
+                    f.write("\n---\n\n") # Separator for the MD file
+            except IOError as e: print(f"Error writing to file {output_md_file}: {e}")
+
+            # Optional: Add a small delay between prompts if needed
+            # time.sleep(1)
+
+    # --- Cleanup ---
     if gpu_handle:
-        pynvml.nvmlShutdown()
+        try: pynvml.nvmlShutdown()
+        except pynvml.NVMLError as e: print(f"Error shutting down NVML: {e}")
+
+    print("\n===== Script Finished =====")
