@@ -16,17 +16,18 @@ pip install -r requirements.txt
 
 ### How to Run 
 
-1. Navigate into one of the following folders: 
+1. Navigate into one of the following folders:
 
-Basic - general questions 
 
-Code - Simple coding questions 
+    Basic - general questions 
 
-Text-sum - text summarization questions 
+    Code - Simple coding questions 
 
-Writing - creative writing questions 
+    Text-sum - text summarization questions 
 
-Multi-lang - multilingual capabilities 
+    Writing - creative writing questions 
+
+    Multi-lang - multilingual capabilities 
 
 2. The run command is: 
 
