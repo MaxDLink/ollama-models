@@ -1,27 +1,39 @@
 ## Code used for running models and experiments 
 
-### ./models 
+### Setup Instructions
 
-Contains test_models.py 
+1. Create and activate a virtual environment:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
+```
 
-cd ./models 
-
-python3 test_models.py 
-
-output: loops through each model and asks "What is the capital of France?" 
-
-deepseek-coder:1.3b does not know how to respond 
-
-mistral & llama2:13b answer "France" 
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
 
 ### How to Run 
 
-source .venv/bin/activate 
+1. Navigate into one of the following folders: 
 
-cd basic 
+Basic - general questions 
 
-python3 basic.py 
+Code - Simple coding questions 
 
--- asnwers general questions 
+Text-sum - text summarization questions 
+
+Writing - creative writing questions 
+
+Multi-lang - multilingual capabilities 
+
+2. The run command is: 
+
+````python3 filename.py```` 
+
+
+
+
+
 
