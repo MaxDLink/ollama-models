@@ -2,15 +2,15 @@
 
 The folder structure is organized as follows: 
 
-    ./Basic - general questions 
+    ./basic - general questions 
 
-    ./Code - Simple coding questions 
+    ./code - Simple coding questions 
 
-    ./Text-sum - text summarization questions 
+    ./text-sum - text summarization questions 
 
-    ./Writing - creative writing questions 
+    ./writing - creative writing questions 
 
-    ./Multi-lang - multilingual capabilities
+    ./multi-lang - multilingual capabilities
 
 Each of these folders has a .md file that logs the three models output and resource usage. I suggest looking in these .md files first before running any of the code because the current state of the .md files are what I used as my report findings. 
 
@@ -51,15 +51,15 @@ pip install -r requirements.txt
 1. Navigate into one of the following folders:
 
 
-    Basic - general questions 
+    basic - general questions 
 
-    Code - Simple coding questions 
+    code - Simple coding questions 
 
-    Text-sum - text summarization questions 
+    text-sum - text summarization questions 
 
-    Writing - creative writing questions 
+    writing - creative writing questions 
 
-    Multi-lang - multilingual capabilities 
+    multi-lang - multilingual capabilities 
 
 2. The run command is: 
 
