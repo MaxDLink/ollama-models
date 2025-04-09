@@ -1,4 +1,18 @@
-## Code used for running models and experiments 
+### Documentation Setup 
+
+The folder structure is organized as follows: 
+
+    ./Basic - general questions 
+
+    ./Code - Simple coding questions 
+
+    ./Text-sum - text summarization questions 
+
+    ./Writing - creative writing questions 
+
+    ./Multi-lang - multilingual capabilities
+
+Each of these folders has a .md file that logs the three models output and resource usage. I suggest looking in these .md files first before running any of the code because the current state of the .md files are what I used as my report findings. 
 
 ### Setup Instructions
 
