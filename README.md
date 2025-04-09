@@ -30,7 +30,9 @@ Multi-lang - multilingual capabilities
 
 2. The run command is: 
 
-````python3 filename.py```` 
+````bash 
+python3 filename.py
+```` 
 
 
 
