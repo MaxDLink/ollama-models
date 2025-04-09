@@ -2,6 +2,24 @@
 
 ### Setup Instructions
 
+0. Setup Ollama 
+
+```bash 
+    curl -fsSL https://ollama.com/install.sh | sh 
+``` 
+
+```bash 
+    ollama pull deepseek-coder:1.3b 
+    ollama pull mistral 
+    ollama pull llama2:13b 
+``` 
+
+Ollama should run as a background process after install with curl, but in the event it does not you can try ollama serve below: 
+
+```bash 
+ollama serve 
+``` 
+
 1. Create and activate a virtual environment:
 ```bash
 python3 -m venv .venv
