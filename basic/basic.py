@@ -6,7 +6,6 @@ import os
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-# --- GPU Functions ---
 def initialize_gpu():
     """Initialize GPU monitoring with pynvml."""
     try:
@@ -27,7 +26,6 @@ def get_gpu_usage(handle):
         return util.gpu
     except pynvml.NVMLError: return "Error"
 
-# --- Ollama Process Functions ---
 def get_ollama_processes():
     """Finds and returns a list of psutil.Process objects for Ollama."""
     ollama_procs = []
@@ -54,12 +52,10 @@ def get_ollama_memory_usage():
             continue
     return total_rss / (1024 * 1024) if isinstance(total_rss, (int, float)) else "Error"
 
-# --- Core Query Function ---
 def query_model(model_name, prompt):
     """Queries the model and measures performance metrics."""
     payload = {"model": model_name, "prompt": prompt, "stream": False}
 
-    # --- CPU Measurement Setup ---
     ollama_procs_before = get_ollama_processes()
     initial_cpu_times = {}
     if not ollama_procs_before:
@@ -71,13 +67,11 @@ def query_model(model_name, prompt):
             print(f"Warning: Could not get initial CPU times for PID {p.pid}")
             continue
 
-    # --- Execute Request and Time ---
     start_time = time.time()
     response = requests.post(OLLAMA_URL, json=payload)
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    # --- CPU Measurement Calculation ---
     total_cpu_time_delta = 0.0
     measured_pids_after = 0
     current_ollama_procs = {p.pid: p for p in get_ollama_processes()}
@@ -101,10 +95,8 @@ def query_model(model_name, prompt):
         average_cpu_percent = (total_cpu_time_delta / elapsed_time) * 100
     else: average_cpu_percent = float('inf') if total_cpu_time_delta > 0 else 0.0
 
-    # --- Memory Measurement ---
     ollama_rss_mb = get_ollama_memory_usage()
 
-    # --- Prepare Result ---
     result_data = {
         "ollama_avg_cpu_percent": average_cpu_percent,
         "ollama_rss_mb": ollama_rss_mb,
@@ -116,42 +108,35 @@ def query_model(model_name, prompt):
 
     return result_data
 
-# --- Main Execution Block ---
 if __name__ == "__main__":
     models = ["deepseek-coder:1.3b", "mistral", "llama2:13b"]
-    # --- Define your list of prompts here ---
+
     prompts = [
         "What is the capital of France?",
         "What are the 3 biggest breakthroughs in python programming in 2025?",
         "Explain the concept of Object-Oriented Programming (OOP) using a simple analogy.",
     ]
-    # -----------------------------------------
 
     gpu_handle = initialize_gpu()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_md_file = os.path.join(script_dir, "basic_output.md")
 
-    # Optional: Clear the file at the start
     try:
         with open(output_md_file, 'w', encoding='utf-8') as f:
             f.write("# Model Outputs and Performance\n\n")
             f.write(f"*Execution started: {time.strftime('%Y-%m-%d %H:%M:%S')}*\n\n")
     except IOError as e: print(f"Error clearing file {output_md_file}: {e}")
 
-    # --- Loop through models ---
     for model in models:
         print(f"\n===== Testing Model: {model} =====")
 
-        # --- Loop through prompts for the current model ---
         for i, prompt in enumerate(prompts):
             print(f"\n--- Prompt {i+1}/{len(prompts)} for {model} ---")
             print(f"Prompt: {prompt}")
 
-            # Query the model with the current prompt
             result = query_model(model, prompt)
             gpu_usage = get_gpu_usage(gpu_handle) if gpu_handle else "N/A"
 
-            # --- Console Output ---
             print(f"Response: {result['response']}")
             cpu_usage_val = result['ollama_avg_cpu_percent']
             ram_usage_val = result['ollama_rss_mb']
@@ -166,35 +151,26 @@ if __name__ == "__main__":
             else: print(f"GPU Usage: {gpu_usage}")
 
             print(f"Time Taken: {result['elapsed_time']:.2f} seconds")
-            print("-" * 30) # Short separator for console
+            print("-" * 30)
 
-            # --- File Output ---
             try:
                 with open(output_md_file, 'a', encoding='utf-8') as f:
-                    # Write Model and Prompt info for each result
                     f.write(f"## Model: {model}\n\n")
-                    f.write(f"**Prompt {i+1}/{len(prompts)}:**\n") # Indicate which prompt this is
+                    f.write(f"**Prompt {i+1}/{len(prompts)}:**\n") 
                     f.write(f"```\n{prompt}\n```\n\n")
                     f.write(f"**Response:**\n```\n{result['response']}\n```\n\n")
                     f.write("**Performance:**\n")
-                    # Write CPU
                     if isinstance(cpu_usage_val, (int, float)): f.write(f"- Ollama Avg CPU Usage: {cpu_usage_val:.2f}%\n")
                     else: f.write(f"- Ollama Avg CPU Usage: {cpu_usage_val}\n")
-                    # Write RAM
                     if isinstance(ram_usage_val, (int, float)): f.write(f"- Ollama RAM Usage (RSS): {ram_usage_val:.2f} MB\n")
                     else: f.write(f"- Ollama RAM Usage (RSS): {ram_usage_val}\n")
-                    # Write GPU
                     gpu_usage_str = f"{gpu_usage:.2f}%" if isinstance(gpu_usage, (int, float)) else str(gpu_usage)
                     f.write(f"- GPU Usage: {gpu_usage_str}\n")
-                    # Write Time
                     f.write(f"- Time Taken: {result['elapsed_time']:.2f} seconds\n")
-                    f.write("\n---\n\n") # Separator for the MD file
+                    f.write("\n---\n\n") 
             except IOError as e: print(f"Error writing to file {output_md_file}: {e}")
 
-            # Optional: Add a small delay between prompts if needed
-            # time.sleep(1)
 
-    # --- Cleanup ---
     if gpu_handle:
         try: pynvml.nvmlShutdown()
         except pynvml.NVMLError as e: print(f"Error shutting down NVML: {e}")
