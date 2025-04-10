@@ -128,7 +128,7 @@ def query_model(model_name, prompt):
 
 if __name__ == "__main__":
     models = ["deepseek-coder:1.3b", "mistral", "llama2:13b"]
-    pdf_path = "./pyCrashCourse.pdf" 
+    pdf_path = "./pyCrashCourse.pdf"  # change to ./Birds.py to read the pdf on birds instead of python programming. Be sure to change the .md too  
 
     summarization_prompt_templates = [
         "Provide a concise summary of the following text:",
@@ -155,7 +155,7 @@ if __name__ == "__main__":
 
     gpu_handle = initialize_gpu()
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_md_file = os.path.join(script_dir, "sum_output.md") 
+    output_md_file = os.path.join(script_dir, "sum_output.md") # change to sum_output_birds.md to output the results on birds instead of python programming. Be sure to change the .pdf path too  
 
     
     try:
